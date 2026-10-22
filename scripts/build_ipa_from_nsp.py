@@ -522,9 +522,9 @@ def survey(nsp_dir, app, fam, keys, repo, py, env):
     major = {v.split('_')[0] for v in F['sdkver']}
     if not major: notes.append('no SDK version string found')
     elif major != {'16'}: notes.append(f'SDK {"/".join(sorted(major))}, not Mario\'s 16: NVN object sizes, API version and service layouts differ by SDK (the host was converted from D2R\'s SDK 12 to SDK 16 sizes); check them one by one per docs/agents/03')
-    if any(l.split()[:1] == ['nn::ro'] for l in R):   # hle_ro.c answers nn::ro as if no NRO were loaded: enough unless the game ships NRO modules
+    if any(l.split()[:1] == ['nn::ro'] for l in R):   # native plugins need offline rewriting and embedding in the profile
         nro = rom['exts']['.nro']
-        notes.append(f'imports nn::ro (loads NRO modules at run time): the RomFS has {nro} .nro files; the host loads none (hle_ro.c)' + (', so their code never runs' if nro else ', which is enough'))
+        notes.append(f'imports nn::ro: the RomFS has {nro} .nro files; required NROs must be listed in modules and nro_modules so they are rewritten and embedded offline (hle_ro.c binds only prepared builds)')
     if fam['dlc']: notes.append('DLC present: it is extracted into the IPA and the host reports the indices as owned and mounts them; check that the host hooks every aoc / fs add-on content call main imports')
     R += ['', '## What it means for a port', ''] + [f'- {n}' for n in notes or ['—']]
     R += ['', '## Provisional profile keys (dm/games/profile_guess.py)', '', 'What the game files decide; mem_used follows the rewrite, and a game with virtual address memory that sets a heap gets a heap check on the Mac (scripts/build_ipa_from_nsp.py heap_check).', '', '```']
@@ -761,9 +761,16 @@ def rewrite(py, repo, exe_dir, out, env, logs, g):
     Reused when the modules, patch_nso.py (with nso_code.py), its switch and capstone are as at the last successful rewrite (Monster Hunter Rise's main alone takes 5.5 min)"""
     import capstone
     mods = g.words('modules')
+    sources = {m: exe_dir / m for m in mods}
+    for entry in g.words('nro_modules'):
+        name, sep, relative = entry.partition('=')
+        path = Path(relative)
+        if not sep or name not in sources or path.is_absolute() or '..' in path.parts:
+            raise BuildError(f'invalid nro_modules entry: {entry} (expected module=RomFS-relative-path)')
+        sources[name] = exe_dir.parent / 'RomFS' / path
     PROG.stage('rewrite', step='checking the inputs')
     kf = out.with_name(out.name + '.key')
-    key = fingerprint(('files', [repo / 'dm/tools/patch_nso.py', repo / 'dm/tools/nso_code.py'] + [exe_dir / m for m in mods]), mods, capstone.__version__, {k: env.get(k) for k in ('DM_PATCH_FRONT',)})
+    key = fingerprint(('files', [repo / 'dm/tools/patch_nso.py', repo / 'dm/tools/nso_code.py'] + [sources[m] for m in mods]), mods, capstone.__version__, {k: env.get(k) for k in ('DM_PATCH_FRONT',)})
     if all((out / f'{m}.patched.bin').is_file() for m in mods) and reused(kf, key) is not None:
         PROG.end(f'{", ".join(mods)}, reused (inputs unchanged)'); return
     tmp = out.with_name(out.name + '.partial'); rmtree(tmp); tmp.mkdir(parents=True); logs.mkdir(parents=True, exist_ok=True)
@@ -772,7 +779,7 @@ def rewrite(py, repo, exe_dir, out, env, logs, g):
     try:
         for m in mods:
             logf[m] = open(logs / f'rewrite_{m}.log', 'w')
-            procs[m] = subprocess.Popen([str(py), str(repo / 'dm/tools/patch_nso.py'), str(exe_dir / m), str(tmp), m], env=env, stdout=logf[m], stderr=subprocess.STDOUT)
+            procs[m] = subprocess.Popen([str(py), str(repo / 'dm/tools/patch_nso.py'), str(sources[m]), str(tmp), m], env=env, stdout=logf[m], stderr=subprocess.STDOUT)
         left = list(mods)
         while left:
             for m in [m for m in left if procs[m].poll() is not None]:

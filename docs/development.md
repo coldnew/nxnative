@@ -590,3 +590,17 @@ The game's own work and its frame rate stay as they are; the host avoids work of
 | `nso_syms.py` | Compares the SDK import surface of two games, or of one game (`-` for the reference) with the host hooks |
 | `nvn_slots_got.py` | Builds the NVN fetch table and call sites (GOT-indirect loaders) |
 | `loader_census.py` | Which of the functions a name loader fetches (glad's GL loader over `eglGetProcAddress`, NVN's C proc loader) the code really calls: the GOT slots the loader stores, loaded by other code |
+
+## Rune Factory 3 Special (experimental Mac bring-up)
+
+The Asian release's update 1.0.3 (`0100D440196AC000`, v196608) now has a
+[game profile](../dm/games/0100D440196AC000/README.md). It is Unity 2020.3.40f1
+on SDK 14.3.0, with the native game plugin in `Plugins/SanDLL.nro`.
+The build rewrites and embeds that plugin offline (`nro_modules`); the host
+binds the prepared build and runs its constructors when Unity requests it.
+The SDK node-area cut, a smaller allocator reservation, and Unity 2020 compute
+shader extraction are needed for the tested 5 GiB guest layout and skinned
+characters. The opening movie, new-game story and dialogue have been checked
+on the Mac. An unsigned IPA can be built with the NSP script; phone gameplay
+and whole-game compatibility remain unverified. The profile notes record the
+remaining unused VR geometry shader and validation evidence.

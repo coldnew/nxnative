@@ -1,4 +1,4 @@
-// pctl free communication offline policy (hle_misc.c, from PR #38): the hooks are looked up by their mangled names in the real swforce registrations, so a missing or misspelled
+// Offline pctl and ngc policies (hle_misc.c): hooks are looked up by their mangled names in the real swforce registrations, so a missing or misspelled
 // takeover fails; no guest module, IPC session or system applet exists in this test
 #include "../hle_misc.c"
 #include <mach-o/getsect.h>
@@ -39,6 +39,18 @@ int main(void) {
         if (end) end();
         if (check) CHECK(check(args[i]) == 0, "ending communication does not grant permission");
         if (available) CHECK(available() == 0, "permission queries do not make communication available");
+    }
+    // An initialized empty offline dictionary must look available to clients
+    // before they ask it to check words (Unity checks the version first).
+    uint32_t (*version)(void *) = hook("_ZN2nn3ngc15ProfanityFilter17GetContentVersionEv");
+    Result (*words)(void *, uint32_t *, uint32_t, const char **, uint64_t) =
+        hook("_ZN2nn3ngc15ProfanityFilter19CheckProfanityWordsEPjjPPKcm");
+    uint32_t masks[] = {~0u, ~0u};
+    const char *names[] = {"Micah", "Player"};
+    if (version) CHECK(version(NULL) != 0, "offline dictionary is available");
+    if (words) {
+        CHECK(words(NULL, masks, ~0u, names, 2) == RES_OK, "offline word check succeeds");
+        CHECK(masks[0] == 0 && masks[1] == 0, "empty dictionary clears every result mask");
     }
     CHECK(unexpected == 0, "no guest symbol lookup or event binding");
     printf("pctl: %d checks, %d failed\n", checks, fails);

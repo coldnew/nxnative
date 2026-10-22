@@ -36,6 +36,7 @@ None of them has a default game: without one they stop and list the profiles. To
 | `package` | The version the profile's tables, prewarm list and notes were made on. The NSP script packs the newest version in the folder (`-p` / `PACKAGE` picks another) |
 | `shader_versions` | Versions whose union the shader tables are (base game first). A registered version is built from the profile as it is only when all of them are in the folder; otherwise from a derived profile, with tables from the packed version alone |
 | `modules` | Code modules rewritten and loaded, in load order. `rtld` is replaced by the host |
+| `nro_modules` | Optional `module=RomFS-relative-path` entries for native plugins, also listed in `modules` (Rune Factory 3: `SanDLL=Plugins/SanDLL.nro`). The rewriter accepts their uncompressed NRO images and embeds executable code just like NSOs. The host binds an exact prepared build when `nn::ro::LoadModule` requests it, defers its constructors until then, and preserves the SDK's copyable module handle. Raw NRO bytes are never executed on iOS. This is prelinked plugin support, not an unrestricted runtime linker |
 | `romfs_marker` | A path that must exist in the RomFS |
 | `zip_store` | Extensions the IPA stores without compressing |
 | `mem_reserve`, `mem_alias`, `mem_stack`, `app_pool` | Guest address-space partition and application pool (`hle_svc.c`) |

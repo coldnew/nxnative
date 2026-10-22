@@ -19,11 +19,24 @@ from capstone.arm64 import ARM64_OP_IMM, ARM64_OP_MEM, ARM64_OP_REG
 
 src, outdir, NAME = sys.argv[1], sys.argv[2], sys.argv[3]
 d = open(src, 'rb').read()
-assert d[:4] == b'NSO0'
-flags = struct.unpack_from('<I', d, 0xc)[0]
-segs = [struct.unpack_from('<III', d, 0x10 + i * 0x10) for i in range(3)]
-bss = struct.unpack_from('<I', d, 0x3c)[0]
-csz = struct.unpack_from('<III', d, 0x60)
+IS_NRO = d[0x10:0x14] == b'NRO0'
+if IS_NRO:
+    # NRO segments are uncompressed and their file offsets equal their image offsets.
+    assert len(d) >= 0x80 and struct.unpack_from('<I', d, 0x14)[0] == 0, 'unsupported NRO header'
+    nro_size = struct.unpack_from('<I', d, 0x18)[0]
+    flags = 0
+    pairs = [struct.unpack_from('<II', d, 0x20 + i * 8) for i in range(3)]
+    assert pairs[0][0] == 0 and all(o + n <= nro_size <= len(d) for o, n in pairs), 'invalid NRO segments'
+    assert all(pairs[i][0] + pairs[i][1] == pairs[i + 1][0] for i in range(2)), 'noncontiguous NRO segments'
+    segs = [(o, o, n) for o, n in pairs]
+    csz = [n for _, n in pairs]
+    bss = struct.unpack_from('<I', d, 0x38)[0]
+else:
+    assert d[:4] == b'NSO0'
+    flags = struct.unpack_from('<I', d, 0xc)[0]
+    segs = [struct.unpack_from('<III', d, 0x10 + i * 0x10) for i in range(3)]
+    bss = struct.unpack_from('<I', d, 0x3c)[0]
+    csz = struct.unpack_from('<III', d, 0x60)
 # Every jump between the patch area and the code is a B (±128 MB). A patch area appended after the image (with bss) cannot reach the code when it would start beyond 112 MB (leaving 16 MB for the patch area): Metroid Dread's main has about 1.8 GB of bss (the engine's static heap); Engage's main starts its patch area at about 103 MB and keeps it after the image.
 # The patch area then sits FRONT bytes before the module base (PATCH_OFF is negative), and the output file holds only text + ro + data (FILE_IMAGE_LEN) followed by the patch area; the loader supplies zero pages for bss and the key page (IMAGE_SIZE is the whole image).
 # The key page stays after bss (the patch area reaches it through ADRP, ±4 GB). Modules below the limit produce output byte-identical to before
@@ -123,6 +136,13 @@ CUTS = {
   '9c73fb73f529fedc9ffefa28246711cc': [
     (0x37c3b0, '08fca752', '087ca052', 'AddressRegionManager constructor: node area limit mov w8,#0x3fe00000 → mov w8,#0x3e00000'),
     (0x37c44c, '09fca752', '097ca052', 'AddressRegionManager constructor: length of the node area registered as an occupied region mov w9,#0x3fe00000 → mov w9,#0x3e00000'),
+  ],
+  # Rune Factory 3 Special 1.0.3 (v196608) sdk (SDK 14.3.0): the same node area cut. StandardAllocator::Initialize in nninitStartup (main+0x5bb9bc) aborts at sdk+0x11f308
+  # with the original 1 GB node area in the 5 GB layout. The constructor at sdk+0x12d8a0 sets its limit at +0x10 and registers the occupied length at +0xac;
+  # both instructions were checked in this build's disassembly (the latter moved within the function relative to SDK 19, so fnmap's intra-function offset is not sufficient).
+  '2aef2cffb104ee7c9e212fd2f4c731e9': [
+    (0x12d8b0, '08fca752', '087ca052', 'AddressRegionManager constructor: node area limit mov w8,#0x3fe00000 → mov w8,#0x3e00000'),
+    (0x12d94c, '09fca752', '097ca052', 'AddressRegionManager constructor: length of the node area registered as an occupied region mov w9,#0x3fe00000 → mov w9,#0x3e00000'),
   ],
   # Pokémon Legends: Z-A 2.0.2 (v393216) sdk (SDK 19.3.11): the same node area cut. The constructor is at sdk+0x1423ec (limit = alias start + 0x3fe00000 at +0x28, a unit heap of 0x30-byte
   # nodes, the area then registered as occupied at +0x142468). With main's allocator region below, the guest block fits the 5 GB proven on a phone
@@ -1655,6 +1675,7 @@ import hashlib
 with open(os.path.join(outdir, 'build_src.sha256'), 'w') as f:
     for src_ in (os.path.abspath(__file__), nso_code.__file__): f.write(hashlib.sha256(open(src_, 'rb').read()).hexdigest() + f'  {os.path.basename(src_)}\n')
 with open(P('fixups.tsv'), 'w') as f:
+    if IS_NRO: f.write('# NRO\t1\n')   # prelinked code: constructors run only when nn::ro::LoadModule requests it
     f.write(f'# PATCH_OFF\t{PATCH_OFF:#x}\n# KEY_PAGE_OFF\t{KEY_PAGE_OFF:#x}\n# KEY_PAGE_SIZE\t0x4000\n# TEXT_END\t{TEXT_END:#x}\n# RO_OFF\t{RO_OFF:#x}\n# DATA_OFF\t{DATA_OFF:#x}\n')
     if FAR: f.write(f'# IMAGE_SIZE\t{IMAGE_SIZE:#x}\n# FILE_IMAGE_LEN\t{FILE_IMAGE_LEN:#x}\n')   # patch area before the base (negative PATCH_OFF): whole image size, length of the image part of the file
     for k in KEY_INDEX: f.write(f'# KEY_{k}_IDX\t{KEY_INDEX[k]}\n')

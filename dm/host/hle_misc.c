@@ -139,7 +139,13 @@ HLE_FORCE("_ZN2nn3ngc15ProfanityFilterC1Ev", "profanity filter, the word list is
 }
 HLE_FORCE("_ZN2nn3ngc15ProfanityFilterD1Ev", "profanity filter", void, h_ngc_Dtor, void *self) { (void)self; }
 HLE_FORCE("_ZN2nn3ngc15ProfanityFilter10InitializeEPvm", "profanity filter init; the host has no word list", Result, h_ngc_Init, void *self, void *work, uint64_t sz) { (void)self; (void)work; (void)sz; return RES_OK; }
-HLE_FORCE("_ZN2nn3ngc15ProfanityFilter17GetContentVersionEv", "word list version; the host returns 0", uint32_t, h_ngc_Ver, void *self) { (void)self; return 0; }
+// A successfully initialized host filter has an empty dictionary, not missing
+// content. Unity's SDK wrapper (Rune Factory 3) rejects every entered name when
+// this version is zero, before it ever calls CheckProfanityWords.
+HLE_FORCE("_ZN2nn3ngc15ProfanityFilter17GetContentVersionEv", "initialized empty word list, revision 1", uint32_t, h_ngc_Ver, void *self) {
+    (void)self;
+    return 1;
+}
 HLE_FORCE("_ZN2nn3ngc15ProfanityFilter19CheckProfanityWordsEPjjPPKcm", "profanity check; never a hit", Result, h_ngc_Check, void *self, uint32_t *masks, uint32_t pat, const char **words, uint64_t n) {
     (void)self; (void)pat; (void)words;
     for (uint64_t i = 0; i < n; i++) masks[i] = 0;

@@ -775,7 +775,9 @@ def unity_compute(x, base, trees):
         for cid, pid, o in unityfs.serialized_objects(x, COMMON, {unityfs.CLASS_COMPUTE_SHADER}, trees):
             for v in o['variants']:
                 for k in v['kernels']:
-                    for i, u in enumerate(k['uniqueVariants']):
+                    variants = k.get('uniqueVariants')
+                    if variants is None: variants = [p['second'] for p in k['variantMap']]   # Unity 2020.3, before variant deduplication
+                    for i, u in enumerate(variants):
                         where = f'{base}#{o["m_Name"]}#{k["name"]}.{i}'
                         out.extend((where, st, ctl, cd) for st, ctl, cd in unity_program(u['code'], where, 'cs'))
     except unityfs.NoTree as e:
