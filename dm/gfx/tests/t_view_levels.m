@@ -29,6 +29,37 @@ static void view_case(int tid, unsigned level, unsigned count, unsigned expected
     }
     pthread_mutex_unlock(&g_rmu);
 }
+static void stencil_case(int tid, int format, int builder_mode) {
+    tex_t t = {.magic=MAGIC('T','E','X',0), .serial=98000+(unsigned)tid, .stencil=builder_mode};
+    t.d = (nvn_texdesc){.target=NVN_TEXTURE_TARGET_2D, .format=format,
+                       .width=4, .height=4, .depth=1, .levels=1, .samples=1};
+    id<MTLTexture> base = [g_dev newTextureWithDescriptor:tex_desc(&t, 0)];
+    CHECK(base && (base.usage & MTLTextureUsagePixelFormatView), "depth/stencil storage permits plane views from creation");
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.depthAttachment.texture = base; pass.depthAttachment.loadAction = MTLLoadActionClear;
+    pass.depthAttachment.storeAction = MTLStoreActionStore; pass.depthAttachment.clearDepth = 0.25;
+    pass.stencilAttachment.texture = base; pass.stencilAttachment.loadAction = MTLLoadActionClear;
+    pass.stencilAttachment.storeAction = MTLStoreActionStore; pass.stencilAttachment.clearStencil = 0x40;
+    id<MTLCommandBuffer> cb = q_cb(); [[cb renderCommandEncoderWithDescriptor:pass] endEncoding];
+    [cb commit]; [cb waitUntilCompleted];
+    serial_put(t.serial, base);
+    view_t v = {.set_dsmode=1, .dsmode=NVN_TEXTURE_DEPTH_STENCIL_MODE_STENCIL};
+    mtl_reg_tex(tid, &t, builder_mode ? NULL : &v);
+    pthread_mutex_lock(&g_rmu); id<MTLTexture> plane = tex_by_id(tid); pthread_mutex_unlock(&g_rmu);
+    CHECK(plane.pixelFormat == MTLPixelFormatX32_Stencil8, "stencil binding selects the stencil plane");
+    CHECK(tex_get(t.serial) == base, "stencil binding preserves the rendered backing texture");
+    NSError *error = nil;
+    id<MTLLibrary> lib = [g_dev newLibraryWithSource:@"#include <metal_stdlib>\nusing namespace metal;\nkernel void read_stencil(texture2d<uint, access::read> t [[texture(0)]], device uint *o [[buffer(0)]], uint2 p [[thread_position_in_grid]]) { o[p.y*4+p.x]=t.read(p).x; }" options:nil error:&error];
+    id<MTLComputePipelineState> ps = [g_dev newComputePipelineStateWithFunction:[lib newFunctionWithName:@"read_stencil"] error:&error];
+    CHECK(ps != nil, "stencil readback pipeline created");
+    id<MTLBuffer> out = [g_dev newBufferWithLength:64 options:MTLResourceStorageModeShared];
+    cb = q_cb(); id<MTLComputeCommandEncoder> en = [cb computeCommandEncoder];
+    [en setComputePipelineState:ps]; [en setTexture:plane atIndex:0]; [en setBuffer:out offset:0 atIndex:0];
+    [en dispatchThreads:MTLSizeMake(4,4,1) threadsPerThreadgroup:MTLSizeMake(4,4,1)]; [en endEncoding];
+    [cb commit]; [cb waitUntilCompleted];
+    CHECK(cb.status == MTLCommandBufferStatusCompleted, "stencil readback completed");
+    for (int i=0; i<16; i++) CHECK(((uint32_t *)out.contents)[i] == 0x40, "rendered stencil bits survive plane view creation");
+}
 int main(void) { @autoreleasepool {
     mtl_init();
     view_case(300, 0, 7, 7, 1);
@@ -38,6 +69,8 @@ int main(void) { @autoreleasepool {
     view_case(304, 6, 7, 1, 1);
     view_case(305, 7, 1, 0, 1);
     view_case(306, 255, 0, 0, 1);
+    stencil_case(320, NVN_FORMAT_DEPTH24_STENCIL8, 0);
+    stencil_case(321, NVN_FORMAT_DEPTH32F_STENCIL8, 1);
     printf("texture view levels: %d checks, %d failed\n", checks, fails);
     return fails != 0;
 } }

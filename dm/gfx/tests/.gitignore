@@ -58,3 +58,8 @@ t_view_swizzle
 t_view_swizzle.dSYM/
 t_vk_desc
 t_vk_desc.dSYM/
+
+/t_reduce
+/t_image_atomic
+/t_reduce.dSYM/
+/t_image_atomic.dSYM/
