@@ -41,6 +41,71 @@ int main(void) { @autoreleasepool {
         if (!j) mtl_sub_begin();
     }
     CHECK(![g_res_objects containsObject:old], "retired base is removed from the residency set after GPU completion");
+    // A pool may have only alternate / image / alpha cached views left. Each
+    // retains the linear parent's no-copy buffer even with no main ID view.
+    pool_t finalized_pool = {0};
+    tex_t linear = {.magic=MAGIC('T','E','X',0), .serial=99701, .pool=&finalized_pool};
+    linear.d = (nvn_texdesc){.target=NVN_TEXTURE_TARGET_2D, .format=NVN_FORMAT_RGBA8, .width=4, .height=4, .depth=1, .levels=1, .samples=1};
+    mtl_reg_tex(991, &linear, NULL);
+    __weak id<MTLBuffer> weak_buffer;
+    @autoreleasepool {
+        id<MTLBuffer> buffer = [g_dev newBufferWithLength:16384 options:MTLResourceStorageModeShared];
+        weak_buffer = buffer;
+        MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:4 height:4 mipmapped:NO];
+        descriptor.storageMode=MTLStorageModeShared; descriptor.usage=MTLTextureUsageShaderRead;
+        NSUInteger row=[g_dev minimumLinearTextureAlignmentForPixelFormat:descriptor.pixelFormat];
+        if (row < 16) row=16;
+        id<MTLTexture> view = [buffer newTextureWithDescriptor:descriptor offset:0 bytesPerRow:row];
+        CHECK(view != nil, "linear cached view created");
+        treg_t *entry=&g_treg[991];
+        entry->alt=(void *)CFBridgingRetain(view); entry->alt_of=(__bridge void *)view; entry->alt_rid=view.gpuResourceID._impl;
+        entry->ar=(void *)CFBridgingRetain(view); entry->im=(void *)CFBridgingRetain(view);
+    }
+    CHECK(weak_buffer != nil && !g_treg[991].view, "secondary caches alone retain the pool buffer");
+    treg_drop_pool_views(&finalized_pool);
+    CHECK(!g_treg[991].alt && !g_treg[991].alt_of && !g_treg[991].alt_rid && !g_treg[991].ar && !g_treg[991].im,
+          "pool finalize clears all secondary caches without a main view");
+    @autoreleasepool { mtl_sub_begin(); mtl_sub_commit(); mtl_drain(); }
+    CHECK(weak_buffer == nil, "pool buffer released after deferred GPU retirement");
+    NvPkg *cached=[NvPkg new];
+    cached->tex=[g_dev newTextureWithDescriptor:[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:4 height:4 mipmapped:NO]];
+    cached->spare=[g_dev newTextureWithDescriptor:[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:4 height:4 mipmapped:NO]];
+    id<MTLTexture> current=cached->tex;
+    cached->spare_fence=g_done+2; cached->spare_sub=g_sub_serial;
+    serial_put(99801,cached);
+    pkg_trim_spares(1);
+    CHECK(cached->spare != nil, "memory pressure never retires an in-flight spare");
+    cached->spare_fence=g_done;
+    pkg_trim_spares(0);
+    CHECK(cached->spare != nil, "recent spare is reused when memory is available");
+    CHECK(pkg_trim_spares(1)>0 && cached->spare==nil && cached->tex==current,
+          "memory pressure retires only the completed spare, preserving current storage");
+    cached->spare=[g_dev newTextureWithDescriptor:[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:4 height:4 mipmapped:NO]];
+    cached->spare_fence=g_done; cached->spare_sub=g_sub_serial;
+    g_sub_serial+=300;
+    CHECK(pkg_trim_spares(0)>0 && cached->spare==nil && cached->tex==current,
+          "idle spare expires without memory pressure");
+    // Pool registration can run on a long-lived guest thread outside a replay
+    // autorelease pool. Churn must not retain finalized no-copy buffers there.
+    enum { POOLS=64 }; void *pool_memory[POOLS];
+    for(int i=0;i<POOLS;i++) {
+        size_t page=(size_t)getpagesize(); if(posix_memalign(&pool_memory[i],page,page))return 2;
+        mtl_pool_add(pool_memory[i],page);
+        void *buffer; uint64_t offset,address;
+        CHECK(mtl_gpu_addr((uint64_t)pool_memory[i],4,&buffer,&offset,&address), "churn pool becomes resident");
+        mtl_pool_del(pool_memory[i]);
+    }
+    @autoreleasepool { mtl_sub_begin();mtl_sub_commit();mtl_drain(); res_commit(); }
+    unsigned alive=0;
+    // g_done wakes waiters before the feedback handler finishes releasing its
+    // local references; poll within fresh pools until that cleanup completes.
+    for(int attempt=0;attempt<100;attempt++) {
+        @autoreleasepool { defer_drain();res_commit();alive=0;for(id buffer in g_dead_pools)if(buffer)alive++; }
+        if(!alive)break;usleep(10000);
+    }
+    CHECK(alive==0,"finalized resident pool buffers do not survive GPU retirement");
+    if(alive)fprintf(stderr,"finalized pool buffers alive: %u\n",alive);
+    for(int i=0;i<POOLS;i++)free(pool_memory[i]);
     printf("texture upgrade aliases: %d checks, %d failed\n", checks, failed);
     return failed != 0;
 } }
