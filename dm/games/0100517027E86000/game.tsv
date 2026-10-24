@@ -1,0 +1,48 @@
+# FINAL FANTASY RESONANCE DEMO 1.0.0: Unreal Engine 5.6.1, SDK 20.5.17, NVN.
+# Separate demo title; allocator and startup independently checked (README.md).
+# Mac title and difficulty menus verified; target-phone validation remains pending.
+
+# ---- Identity ----
+title_id	0100517027E86000
+program_id	0100517027E86000
+
+# ---- App ----
+name	FINAL FANTASY RESONANCE DEMO
+ipa	FinalFantasyResonanceDemo.ipa
+app_category	public.app-category.games
+
+# ---- Versions ----
+build	v0	1.0.0	main=dd0dc94da6f6e6d7270119601bb06d86	subsdk0=ab62fe8edd07a6a293f885d54359e559	sdk=0023a1b06130cd795f7bc4613772af0a
+package	v0
+shader_versions	v0
+
+# ---- Files ----
+# every module main imports from
+modules	main subsdk0 sdk
+romfs_marker	FFRS/Content/Paks/FFRS-Switch.ucas
+zip_store	.pak:.ttf:.txt:.ucas:.utoc:.metallib
+
+# ---- Memory ----
+# UE 5.6.1: the checked demo startup at main+0x13370 reads the engine-region argument,
+# then constructs FMallocBinned3 at main+0x77f9210 (main+0x137f0 -> +0xaee70).
+# Its 32-slot allocator is replaced by the host; the shared SDK build has its node-area cut.
+game_args	-SwitchVirtualAddressSpaceSize=4064
+mem_reserve	0x140000000
+mem_alias	0x118000000
+mem_stack	0x10000000
+app_pool	0xCD500000
+# the NPDM declares 20 MB of system resource
+sys_resource	0x1400000
+
+# ---- Shader split ----
+# the decoded shader code archives: the engine's global shaders and the game's material shaders
+shader_groups	ShaderArchive-Global-=global ShaderArchive-=game
+shader_note	FINAL FANTASY RESONANCE DEMO shaders
+
+# ---- Presentation and input ----
+# Keep the demo's 30 fps pacing during bring-up; no retail fixed addresses are used.
+fps_target	30
+pad_layout	full
+
+# UE particle factories can index the driver texture table at run time.
+tex_dyn_slots	on
