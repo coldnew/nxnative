@@ -67,3 +67,25 @@ The 22 extracted 2.0.2 game files match the previous external-data manifest by
 size and CRC32 (5,989,102,829 bytes). These runtime changes require a replacement
 IPA, with rebuilt shaders after the upstream merge, but no RomFS update.
 New runtime validation results are recorded with the generated release artifacts.
+
+## Missing construction geometry
+
+The supplied save reproduces floating ladders and platforms on both Mac and iOS.
+The ladder is `field_item024`: its captured 15,760 vertex bytes exactly match the
+RomFS asset, and its scene placement agrees with the draw's world matrix.
+Disabling face culling, fragment discard, depth rejection and GPU occlusion did
+not restore the surrounding construction geometry.
+
+The missing structures use GPU-written indirect draws. Their vertex shaders
+subtract Metal's native base instance from `instance_id`, then add NVN's driver
+word at c0 + 0x644 to index the instance-transform buffer. The replay populated
+that word from the CPU draw record, which is zero for an indirect draw. Every
+instance therefore selected the wrong transform. Reading Metal's native
+`base_instance` for that vertex-stage word restores the construction panels and
+supports in this save. This is a general shader-build rule, not a title-specific
+visibility override; direct draws use the same native parameter.
+
+`test_draw_parameters.py` checks direct and compute-written indirect arguments,
+including a base instance with bit 31 set, on the GPU. With a zeroed driver word,
+the old path selects instances 0 and 1; the native path selects the requested instances.
+Game assets and RomFS are unchanged.
