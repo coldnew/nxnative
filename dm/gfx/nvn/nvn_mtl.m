@@ -652,12 +652,15 @@ static uint64_t g_sub_serial;   // Submission index (used by the parallel precom
 void mtl_sub_begin(void) {
     mtl_init(); g_sub_serial++; g_seg = 0; seg_clk_put(g_sclk); g_sclk = NULL; g_rc_npend = 0; g_rc_skip = 0;
     defer_drain();
-    if (g_sub_serial % 60 == 0) {
+    // Streaming can exhaust the remaining iOS allowance within the old 60-submit
+    // interval. Check pressure every eight submissions and retire completed reuse
+    // copies promptly; keep the normal idle scan at sixty submissions.
+    if (g_sub_serial % 8 == 0 || g_sub_serial % 60 == 0) {
         int pressure = 0;
 #if TARGET_OS_IPHONE
         pressure = os_proc_available_memory() < (256ull << 20);
 #endif
-        pkg_trim_spares(pressure);
+        if (pressure || g_sub_serial % 60 == 0) pkg_trim_spares(pressure);
     }
     defer_reset();
     warm_claim();

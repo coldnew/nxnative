@@ -10,7 +10,7 @@ nnMain at sdk+0x145038 (main caller +0x2aa900). The established node-area reduct
 from approximately 1 GiB to 62 MiB makes startup fit the 5 GiB guest layout.
 `nso_fnmap.py` mapped the constructor from SDK 14; disassembly checked both movs
 at sdk+0x34e0c8 and +0x34e164, gated on SDK build
-`2d369d9999e3e10e665106f840ffff9b` in `dm/tools/patch_nso.py`.
+`2d369d9999e3e10e665106f840ffff9b` in `dm/tools/sdk_patches.py`.
 
 The built-in ComputeShader objects have type hash
 `1a95529ac2eb1a97cd9d2a4356bd722f`. Unlike Unity 2020's variant maps and 2022's
