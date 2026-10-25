@@ -74,3 +74,8 @@ t_upgrade_alias
 t_upgrade_alias.dSYM/
 t_stencil_view
 t_stencil_view.dSYM/
+
+/t_reduce
+/t_image_atomic
+/t_reduce.dSYM/
+/t_image_atomic.dSYM/

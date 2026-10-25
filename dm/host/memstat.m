@@ -102,7 +102,7 @@ static void *memstat_thread(void *p) {
     return NULL;
 }
 
-__attribute__((constructor)) static void memstat_start(void) {
+void dm_memstat_start(void) {
     const char *p = getenv("DM_MEMSTAT");
     if (!p || !*p) return;
     char *path = strdup(p);

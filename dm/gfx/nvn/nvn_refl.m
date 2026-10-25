@@ -59,6 +59,8 @@ int nvn_refl_from_json(NSDictionary *j, nvn_refl *o, char *err, int errlen) {
             if ([k isEqualToString:@"img"] && reg >= 0 && [nm isKindOfClass:[NSString class]] && [nm hasSuffix:@"_atomic"] && [ty isKindOfClass:[NSString class]] && [ty hasPrefix:@"device atomic_"]) {
                 r->kind = NVN_RB_IMGA; r->rw = 1; o->nb++; continue;
             }
+            r->reduce = [b[@"reduce"] intValue];
+            if (r->reduce > 2) FAIL("B sampler reduction mode %u", r->reduce);
             if ([k isEqualToString:@"cbuf"]) r->kind = NVN_RB_CBUF;
             else if ([k isEqualToString:@"samp"]) r->kind = NVN_RB_SAMP;
             else if ([k isEqualToString:@"samp_tex"]) r->kind = NVN_RB_SAMPT;
