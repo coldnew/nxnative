@@ -6,7 +6,7 @@
 int main(int argc, const char **argv) { @autoreleasepool {
     if (argc != 2) return 2;
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-    if (!device) { fprintf(stderr, "No Metal device\n"); return 1; }
+    if (!device) { fprintf(stderr, "No Metal device\n"); return 77; }
     NSError *error = nil;
     id<MTLLibrary> library = [device newLibraryWithURL:[NSURL fileURLWithPath:@(argv[1])] error:&error];
     if (!library) { fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1; }

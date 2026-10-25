@@ -51,6 +51,7 @@ class DrawParameters(unittest.TestCase):
             subprocess.run(['clang', '-fobjc-arc', str(Path(__file__).with_name('t_draw_parameters.m')),
                             '-framework', 'Foundation', '-framework', 'Metal', '-o', str(host)], check=True, capture_output=True)
             missing = SOURCE.replace(', uint gl_BaseInstance [[base_instance]]', '')
+            libraries = []
             for name, source in [('old', SOURCE), ('native', dmsh_draw.native_base_instance(SOURCE)),
                                  ('added', dmsh_draw.native_base_instance(missing))]:
                 path = root / f'{name}.metal'
@@ -60,7 +61,11 @@ class DrawParameters(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                 library = root / f'{name}.metallib'
                 subprocess.run(['xcrun', '-sdk', 'macosx', 'metallib', str(root / f'{name}.macosx.air'), '-o', str(library)], check=True, capture_output=True)
+                libraries.append((name, library))
+            for name, library in libraries:
                 result = subprocess.run([str(host), str(library)], capture_output=True, text=True)
+                if result.returncode == 77:
+                    self.skipTest('Metal device unavailable; all shader fixtures compiled for macOS and iOS')
                 self.assertEqual(result.returncode, 0, result.stderr)
                 rows = [list(map(int, line.split())) for line in result.stdout.splitlines()]
                 self.assertEqual(len(rows), 12)

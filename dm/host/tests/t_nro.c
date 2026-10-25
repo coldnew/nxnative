@@ -77,7 +77,9 @@ int main(void) {
     images[2].value = 999; load(2);
     assert(images[2].value == 123 && images[2].slots[0] == first + 8);
     assert((uint64_t)guest_sym("shared") == first);
-    unload(1);
+    h_ro_UnloadModule(&copied);
+    assert(!g_mod[1].loaded);
+    assert(h_ro_LookupModuleSymbol(&p, &handles[0], "shared") != 0);
     assert(images[0].slots[0] == second + 8 && images[0].slots[1] == 0 && images[2].slots[1] == 0);
     unload(2);
     assert(!guest_sym("shared") && images[0].slots[0] == (uint64_t)&missing + 8);
