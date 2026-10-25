@@ -144,5 +144,29 @@ int main(void) {
     h_au_Close(out3);
     int ok3 = got3 == 20 && order3 && total3 > 1900 && total3 < 2600 && back && cb_restart && cb_end > cb_restart;
     printf("device stall: released %d/20 in order=%d in %.0f ms (expected 2000-2600), AudioUnit restarted and calling back again=%d %s\n", got3, order3, total3, back && cb_restart && cb_end > cb_restart, ok3 ? "✓" : "✗");
-    return !ok3;
+    if (!ok3) return 1;
+
+    // Stop must release the partial and queued blocks and wake a middleware
+    // worker waiting on the release event, for both backends. An already-stopped
+    // output must keep buffers queued for its first Start.
+    for (int real = 0; real <= 1; real++) {
+        setenv("DM_AUDIO", real ? "1" : "0", 1);
+        char out4[64]; gbuf b4[2]; static int16_t pcm4[2][48000 * 2];
+        if (h_au_Open(out4, ev, NULL, prm)) return 1;
+        g_sig = 0;
+        for (int i = 0; i < 2; i++) { h_au_SetBuf(&b4[i], pcm4[i], sizeof pcm4[i], sizeof pcm4[i]); h_au_Append(out4, &b4[i]); }
+        h_au_Stop(out4);
+        if (h_au_BufCount(out4) != 2 || h_au_Released(out4)) { puts("FAIL stop before start discards buffers"); return 1; }
+        h_au_Start(out4); usleep(20000); h_au_Stop(out4);
+        for (int i = 0; i < 100 && !atomic_load(&g_sig); i++) usleep(1000);
+        int ok4 = h_au_State(out4) == STATE_STOPPED && h_au_BufCount(out4) == 0 && atomic_load(&g_sig) > 0;
+        ok4 &= h_au_Released(out4) == &b4[0];
+        ok4 &= h_au_Released(out4) == &b4[1];
+        h_au_Stop(out4);
+        ok4 &= h_au_Released(out4) == NULL;
+        h_au_Close(out4);
+        printf("stop releases partial / queued buffers in order and signals event (real=%d): %s\n", real, ok4 ? "PASS" : "FAIL");
+        if (!ok4) return 1;
+    }
+    return 0;
 }

@@ -324,6 +324,26 @@ static void au_stop_at(void *g, void *lr) {   // lr NULL: the stop inside Close,
     int was = atomic_exchange_explicit(&a->state, STATE_STOPPED, memory_order_acq_rel);
     if (lr) au_note(a, was == STATE_STARTED ? "Stop" : "Stop (already stopped)", lr);
     backend_stop(a);   // the AudioUnit, or the silent sink (including one that took over during suspension)
+    // Horizon releases playing buffers when stopped, including a partial block.
+    // FMOD signals its stop flag, stops AudioOut, then joins the worker that is
+    // waiting on this release event (Brilliant Diamond main+0x1334a60).
+    if (was == STATE_STARTED) {
+        pthread_mutex_lock(&a->m);   // the backend is stopped; serialize with append / dequeue
+        uint32_t qh = atomic_load_explicit(&a->q_head, memory_order_acquire);
+        uint32_t qt = atomic_load_explicit(&a->q_tail, memory_order_acquire);
+        uint32_t rw = atomic_load_explicit(&a->rel_tail, memory_order_relaxed);
+        uint32_t rr = atomic_load_explicit(&a->rel_head, memory_order_acquire);
+        int released = qh != qt;
+        while (qh != qt) {
+            if (rw - rr == RELMAX) die("AudioOut released queue overflow");
+            a->rel[rw++ & (RELMAX - 1)] = a->q[qh++ & (QMAX - 1)];
+        }
+        a->pos = 0;
+        atomic_store_explicit(&a->q_head, qh, memory_order_release);
+        atomic_store_explicit(&a->rel_tail, rw, memory_order_release);
+        pthread_mutex_unlock(&a->m);
+        if (released) { if (a->event) notify_release(a); if (a->rel_sem) dispatch_semaphore_signal(a->rel_sem); }
+    }
     pthread_mutex_unlock(&g_aos_lock);
 }
 HLE_FORCE("_ZN2nn5audio12StopAudioOutEPNS0_8AudioOutE", "stop playback", void, h_au_Stop, void *g) { au_stop_at(g, __builtin_return_address(0)); }
