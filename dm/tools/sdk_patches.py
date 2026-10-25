@@ -1,6 +1,12 @@
 # The rewriter's patches of Nintendo SDK module builds (sdk), which several games can ship: dm/tools/patch_nso.py applies those of a module's NSO build ID, whatever the game.
 # A patch of a game's own module (main) goes in its profile's patches.py (dm/games/<id>/patches.py). CUTS as described in patch_nso.py ("Registered patches")
 CUTS = {
+    # Rune Factory 3 Special 1.0.3, SDK 14.3.0: 62 MiB node area in the 5 GiB layout.
+    # Both instructions were checked in this build's constructor at sdk+0x12d8a0.
+    '2aef2cffb104ee7c9e212fd2f4c731e9': [
+        (0x12d8b0, '08fca752', '087ca052', 'AddressRegionManager constructor: node area limit mov w8,#0x3fe00000 → mov w8,#0x3e00000'),
+        (0x12d94c, '09fca752', '097ca052', 'AddressRegionManager constructor: occupied node area mov w9,#0x3fe00000 → mov w9,#0x3e00000'),
+    ],
     # SDK 11.4.3, Brilliant Diamond 1.0.0 (also Dread / 13 Sentinels).
     # Its 1 GB node area exhausts the 5 GB layout during StandardAllocator startup.
     # Both instructions were checked in this build's constructor at sdk+0x34e0b8.

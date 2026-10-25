@@ -64,6 +64,10 @@ int main(void) {
     assert(images[0].slots[0] == second + 8 && images[1].slots[0] == second + 8);
     assert(images[0].slots[1] == first && images[2].slots[1] == first);
     assert(images[0].slots[2] == 0);
+    // Unity copies nn::ro::Module by value (Rune Factory 3 Special).
+    ro_module copied = handles[0];
+    uintptr_t copied_symbol = 0;
+    assert(h_ro_LookupModuleSymbol(&copied_symbol, &copied, "shared") == 0 && copied_symbol == first);
     uintptr_t p; assert(h_ro_LookupModuleSymbol(&p, &handles[0], "shared") == 0 && p == first);
     assert(h_ro_LoadModule(&handles[0], raw[0], NULL, 32, 1) != 0);
 

@@ -762,3 +762,14 @@ The game's own work and its frame rate stay as they are; the host avoids work of
 | `nro_collect.py` | The NRO modules a game registers in its NRRs, found as loose files, among an indexed archive's current files (`data.arc`) or by a scan, written out for the rewriter with `nro.tsv`; online SDKs are listed as refused |
 | `nvn_slots_got.py` | Builds the NVN fetch table and call sites (GOT-indirect loaders) |
 | `loader_census.py` | Which of the functions a name loader fetches (glad's GL loader over `eglGetProcAddress`, NVN's C proc loader) the code really calls: the GOT slots or globals the loader stores, loaded by other code (followed through registers, relocated GOT entries and `csel`, for LÖVE's glad) |
+
+## Rune Factory 3 Special (experimental Mac bring-up)
+
+The Asian update 1.0.3 (`0100D440196AC000`, v196608) has a
+[game profile](../dm/games/0100D440196AC000/README.md). It uses Unity 2020.3.40f1
+and SDK 14.3.0, with the NRR-registered plugin `Plugins/SanDLL.nro` collected
+and rewritten by the standard NRO pipeline. Its SDK node-area cut lives in
+`dm/tools/sdk_patches.py`; the profile keeps its measured 1 GiB application pool.
+Unity 2020 compute shader parsing is retained alongside the 2019 and 2022 layouts.
+The earlier Mac bring-up reached initial free movement; iOS and whole-game
+compatibility remain unverified. See the profile for its validation scope.
