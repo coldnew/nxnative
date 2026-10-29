@@ -2,7 +2,7 @@
 #include "../nvn/nvn_mtl.m"
 void *front_metal_layer(void) { return NULL; }
 module_t *module_of(const void *p) { (void)p; return NULL; }
-module_t g_mod[MAX_MOD]; int g_nmod;
+module_t *g_mod; int g_nmod;
 void svc_thread_dump(void) {}
 uint64_t now_ns(void) { return bp_now(); }
 static int checks, failed;
@@ -16,6 +16,14 @@ int main(void) { @autoreleasepool {
     mtl_tex_init(&a); mtl_tex_init(&b);
     id<MTLTexture> old = tex_mtl(&a);
     CHECK(tex_mtl(&b) == old && tex_mtl(&ghost) == old, "live and finalized serials initially share storage");
+    tex_t image = a; image.serial += 3; image.d.flags |= NVN_TEXTURE_FLAGS_IMAGE; mtl_tex_init(&image);
+    CHECK(tex_mtl(&image) == old, "an IMAGE sampling descriptor shares storage without a usage change");
+    mtl_reg_tex(950, &image, NULL); S.img[5][0] = 950;
+    NvShader *writer = [NvShader new]; writer->rf.nb = 1; writer->rf.b[0] = (nvn_rbind){.kind=NVN_RB_IMG, .rw=1};
+    NvProg *program = [NvProg new]; program->sh[5] = writer; image_prepare(program, 1u << 5);
+    old = tex_mtl(&image);
+    CHECK(old.usage & MTLTextureUsageShaderWrite, "IMAGE descriptor adds shader-write usage");
+    CHECK(tex_mtl(&a) == old && tex_mtl(&b) == old && tex_mtl(&ghost) == old, "IMAGE usage does not split storage across existing descriptors");
     // Exercise replacement at the hash table's growth threshold: reinserting while iterating would resize and reshuffle it.
     uint64_t extra = 99400;
     while ((g_by_serial.n + 1) * 4 <= g_by_serial.cap * 3) { hm_put_id(&g_by_serial, &extra, old); extra++; }
@@ -59,11 +67,11 @@ int main(void) { @autoreleasepool {
         CHECK(view != nil, "linear cached view created");
         treg_t *entry=&g_treg[991];
         entry->alt=(void *)CFBridgingRetain(view); entry->alt_of=(__bridge void *)view; entry->alt_rid=view.gpuResourceID._impl;
-        entry->ar=(void *)CFBridgingRetain(view); entry->im=(void *)CFBridgingRetain(view);
+        entry->im=(void *)CFBridgingRetain(view);
     }
     CHECK(weak_buffer != nil && !g_treg[991].view, "secondary caches alone retain the pool buffer");
     treg_drop_pool_views(&finalized_pool);
-    CHECK(!g_treg[991].alt && !g_treg[991].alt_of && !g_treg[991].alt_rid && !g_treg[991].ar && !g_treg[991].im,
+    CHECK(!g_treg[991].alt && !g_treg[991].alt_of && !g_treg[991].alt_rid && !g_treg[991].im,
           "pool finalize clears all secondary caches without a main view");
     @autoreleasepool { mtl_sub_begin(); mtl_sub_commit(); mtl_drain(); }
     CHECK(weak_buffer == nil, "pool buffer released after deferred GPU retirement");
